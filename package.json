@@ -1,0 +1,33 @@
+{
+  "name": "mapbox-city-visualization",
+  "version": "1.0.0",
+  "private": true,
+  "description": "基于Mapbox的武汉市智慧城市可视化平台",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "mock": "json-server mock/index.js -p 8080",
+    "update-traffic": "node mock/updateTrafficData.js",
+    "mock:all": "concurrently \"npm run mock\" \"npm run update-traffic\""
+  },
+  "dependencies": {
+    "@antv/l7": "^2.23.0",
+    "@antv/l7-draw": "^3.0.25",
+    "@mapbox/mapbox-gl-draw": "^1.5.0",
+    "@turf/turf": "^7.2.0",
+    "axios": "^1.6.8",
+    "element-plus": "^2.10.4",
+    "lodash": "^4.17.21",
+    "mapbox-gl": "^3.13.0",
+    "vue": "^3.5.17",
+    "vue-router": "^4.5.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^4.4.0",
+    "concurrently": "^9.2.0",
+    "json-server": "^0.17.3",
+    "mockjs": "^1.1.0",
+    "vite": "^4.4.9"
+  }
+}
