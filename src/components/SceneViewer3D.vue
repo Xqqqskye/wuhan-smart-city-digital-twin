@@ -10,8 +10,8 @@
       </div>
       <div v-show="toolTab === 'route'">
         <TrafficCondition />
-        <MobilityPoiLayer :map="map" :active="isInCityView" />
-        <RouteNavigator :map="map" />
+        <MobilityPoiLayer ref="mobilityPoiRef" :map="map" :active="isInCityView" />
+        <RouteNavigator ref="routeNavigatorRef" :map="map" />
       </div>
       <MapDrawingTools v-if="drawingToolsMounted" v-show="toolTab === 'draw'" :map="map" :active="toolTab === 'draw'" />
     </div>
@@ -39,6 +39,7 @@ import RouteNavigator from '@/components/RouteNavigator.vue';
 import Marker from './Marker.vue'; // 路径根据实际情况调整
 import TrafficCondition from '@/components/TrafficCondition.vue'; // 路径根据实际情况调整
 import MobilityPoiLayer from '@/components/MobilityPoiLayer.vue';
+import { searchPOI } from '@/utils/amapAPI';
 
 
 const props = defineProps({
@@ -60,6 +61,8 @@ const currentStyle = ref(props.mapStyle); // 当前地图样式
 const isInCityView = ref(false); // 是否在城市视图中
 const markers = ref([]); // 所有标记的数组
 const markerRef = ref(null); // 新增
+const routeNavigatorRef = ref(null);
+const mobilityPoiRef = ref(null);
 const threeDReady = ref(false);
 const toolTab = ref('route');
 const drawingToolsMounted = ref(false);
@@ -393,6 +396,87 @@ const flyTo = (viewConfig) => {
   });
 };
 
+const agentViewPresets = {
+  overview: { center: [114.29703, 30.547081], zoom: 11.6, pitch: 48, bearing: -18 },
+  top: { center: [114.29703, 30.547081], zoom: 13.1, pitch: 0, bearing: 0 },
+  skyline: { center: [114.23967, 30.59665], zoom: 15.3, pitch: 72, bearing: -28 }
+};
+
+const ensureCityMode = () => {
+  if (isInCityView.value) return;
+  selectedCity.value = '武汉市';
+  isInCityView.value = true;
+  stopRotation();
+  map.value?.stop();
+  emit('city-changed', selectedCity.value);
+};
+
+async function focusPlace(query) {
+  const keyword = String(query || '').trim();
+  if (!keyword) throw new Error('请提供需要定位的地点');
+  const results = await searchPOI(keyword, '武汉市');
+  const place = results[0];
+  if (!place?.location) throw new Error(`未找到“${keyword}”，请尝试更具体的地点名称`);
+  ensureCityMode();
+  handleSearch(place);
+  return { message: `已定位到${place.title}`, place: place.title };
+}
+
+async function executeAgentAction(action) {
+  const args = action?.args || {};
+  switch (action?.type) {
+    case 'enter_city':
+      flyToWuhan();
+      return { message: '已进入武汉城市视图' };
+    case 'show_globe':
+      backToGlobe();
+      return { message: '已返回地球视图' };
+    case 'fly_to':
+      return focusPlace(args.query);
+    case 'set_view': {
+      const preset = agentViewPresets[args.preset];
+      if (!preset) throw new Error('不支持该视角预设');
+      ensureCityMode();
+      flyTo(preset);
+      const names = { overview: '武汉总览', top: '垂直俯视', skyline: '城市天际线' };
+      return { message: `已切换到${names[args.preset]}视角` };
+    }
+    case 'show_facilities':
+      ensureCityMode();
+      toolTab.value = 'route';
+      return mobilityPoiRef.value?.setFacilities?.(args.kinds) || { message: '设施图层尚未就绪' };
+    case 'navigate':
+      ensureCityMode();
+      toolTab.value = 'route';
+      return routeNavigatorRef.value?.planRoute?.(args) || Promise.reject(new Error('导航工具尚未就绪'));
+    case 'open_tool':
+      if (args.tool === 'draw') openDrawingTools();
+      else toolTab.value = 'route';
+      return { message: `已打开${args.tool === 'draw' ? '智能绘图' : '路径导航'}工具` };
+    case 'clear_route':
+      toolTab.value = 'route';
+      routeNavigatorRef.value?.clearRoute?.();
+      return { message: '已清除当前路线' };
+    default:
+      throw new Error('暂不支持该地图操作');
+  }
+}
+
+function getAgentContext() {
+  const center = map.value?.getCenter?.();
+  return {
+    map: {
+      center: center ? [Number(center.lng.toFixed(6)), Number(center.lat.toFixed(6))] : [],
+      zoom: map.value ? Number(map.value.getZoom().toFixed(2)) : null,
+      pitch: map.value ? Number(map.value.getPitch().toFixed(1)) : null,
+      bearing: map.value ? Number(map.value.getBearing().toFixed(1)) : null,
+      activeTool: toolTab.value
+    },
+    route: routeNavigatorRef.value?.getAgentContext?.() || {},
+    facilities: mobilityPoiRef.value?.getAgentContext?.() || {}
+  };
+}
+
 // 处理搜索结果
 const handleSearch = (location) => {
   if (location?.location && map.value) {
@@ -513,7 +597,10 @@ onUnmounted(() => {
 // 暴露方法给父组件
 defineExpose({ 
   flyTo,
-  backToGlobe
+  backToGlobe,
+  flyToWuhan,
+  executeAgentAction,
+  getAgentContext
 });
 </script>
 

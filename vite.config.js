@@ -3,6 +3,96 @@ import { fileURLToPath, URL } from 'node:url'
 import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
+const CITY_AGENT_ACTIONS = new Set([
+  'enter_city', 'show_globe', 'fly_to', 'set_map_style', 'toggle_3d',
+  'set_view', 'show_facilities', 'navigate', 'open_tool', 'clear_route'
+])
+
+const clampText = (value, length = 80) => typeof value === 'string' ? value.trim().slice(0, length) : ''
+
+function sanitiseAgentContext(value) {
+  if (!value || typeof value !== 'object') return {}
+  const map = value.map && typeof value.map === 'object' ? value.map : {}
+  const route = value.route && typeof value.route === 'object' ? value.route : {}
+  const facilities = value.facilities && typeof value.facilities === 'object' ? value.facilities : {}
+  return {
+    city: clampText(value.city, 24),
+    cityMode: Boolean(value.cityMode),
+    mapStyle: clampText(value.mapStyle, 32),
+    mapStyleName: clampText(value.mapStyleName, 32),
+    enable3D: Boolean(value.enable3D),
+    map: {
+      center: Array.isArray(map.center) ? map.center.slice(0, 2).map(Number).filter(Number.isFinite) : [],
+      zoom: Number.isFinite(Number(map.zoom)) ? Number(map.zoom) : null,
+      pitch: Number.isFinite(Number(map.pitch)) ? Number(map.pitch) : null,
+      bearing: Number.isFinite(Number(map.bearing)) ? Number(map.bearing) : null,
+      activeTool: clampText(map.activeTool, 16)
+    },
+    route: {
+      mode: clampText(route.mode, 16),
+      origin: clampText(route.origin, 80),
+      destination: clampText(route.destination, 80),
+      summary: clampText(route.summary, 120)
+    },
+    facilities: {
+      parking: Boolean(facilities.parking),
+      charging: Boolean(facilities.charging),
+      visibleCount: Math.max(0, Number(facilities.visibleCount) || 0)
+    }
+  }
+}
+
+function normaliseAgentAction(action) {
+  if (!action || typeof action !== 'object' || !CITY_AGENT_ACTIONS.has(action.type)) return null
+  const args = action.args && typeof action.args === 'object' ? action.args : {}
+  const base = { type: action.type, label: clampText(action.label, 40) }
+  if (action.type === 'fly_to') return { ...base, args: { query: clampText(args.query, 80) } }
+  if (action.type === 'set_map_style') return { ...base, args: { styleId: clampText(args.styleId, 32) } }
+  if (action.type === 'toggle_3d') return { ...base, args: { enabled: Boolean(args.enabled) } }
+  if (action.type === 'set_view') return { ...base, args: { preset: clampText(args.preset, 24) } }
+  if (action.type === 'show_facilities') {
+    const kinds = Array.isArray(args.kinds) ? args.kinds.filter(kind => ['parking', 'charging'].includes(kind)) : []
+    return { ...base, args: { kinds: [...new Set(kinds)] } }
+  }
+  if (action.type === 'navigate') {
+    const mode = ['driving', 'transit', 'walking', 'bicycling'].includes(args.mode) ? args.mode : 'driving'
+    return { ...base, args: { origin: clampText(args.origin, 80), destination: clampText(args.destination, 80), mode } }
+  }
+  if (action.type === 'open_tool') {
+    return { ...base, args: { tool: args.tool === 'draw' ? 'draw' : 'route' } }
+  }
+  return { ...base, args: {} }
+}
+
+function parseAgentResponse(rawContent) {
+  const fallback = { content: clampText(rawContent, 5000) || '暂未获得有效回答', actions: [] }
+  try {
+    const jsonText = String(rawContent || '').replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
+    const parsed = JSON.parse(jsonText)
+    const actions = Array.isArray(parsed.actions)
+      ? parsed.actions.map(normaliseAgentAction).filter(Boolean).slice(0, 4)
+      : []
+    return { content: clampText(parsed.reply || parsed.content, 5000) || fallback.content, actions }
+  } catch {
+    return fallback
+  }
+}
+
+const CITY_AGENT_SYSTEM_PROMPT = `你是“武汉城市运行中心”的城市智能体，不只是聊天助手。你可以根据用户意图生成安全、可撤销的前端地图操作。
+你必须只返回一个 JSON 对象，格式为 {"reply":"给用户的简洁中文回复","actions":[{"type":"动作类型","label":"将要执行的操作","args":{}}]}，不要输出 JSON 之外的文字。
+可用动作：
+- enter_city：进入武汉城市视图。
+- show_globe：返回地球视图。
+- fly_to：定位武汉地点，args={"query":"地点名"}。
+- set_map_style：切换底图，styleId 只能为 standard、standard-satellite、streets-v12、outdoors-v12、dark-v11、light-v11、navigation-day-v1、navigation-night-v1。
+- toggle_3d：开关三维建筑，args={"enabled":true}。
+- set_view：切换视角，preset 只能为 overview、top、skyline。
+- show_facilities：显示出行设施，args={"kinds":["parking","charging"]}，可只传一种。
+- navigate：规划路线，args={"origin":"起点","destination":"终点","mode":"driving|transit|walking|bicycling"}。transit 表示公交和地铁综合出行。
+- open_tool：打开地图工具，args={"tool":"route|draw"}。
+- clear_route：清除当前路线。
+仅在用户明确要求地图发生变化时生成 actions；知识问答、分析建议不要生成动作。缺少导航起点或终点时先追问，不要猜测。用户说“这里/附近”时可以依据当前地图中心和当前视野回答，但不能捏造实时空位、充电枪状态、公交到站或城市事件。操作是否成功由前端确认，因此 reply 应使用“正在为你…”而不是谎称已经完成。`
+
 function qwenProxy(env) {
   const apiKey = env.DASHSCOPE_API_KEY || env.QWEN_API_KEY || ''
   const apiBase = (env.QWEN_API_BASE || 'https://dashscope.aliyuncs.com/compatible-mode/v1').replace(/\/$/, '')
@@ -46,6 +136,7 @@ function qwenProxy(env) {
         ? body.messages.slice(-16).filter(item => ['user', 'assistant'].includes(item?.role) && typeof item?.content === 'string').map(item => ({ role: item.role, content: item.content.slice(0, 5000) }))
         : []
       if (!messages.length) return sendJson(res, 400, { error: '请输入问题' })
+      const agentContext = sanitiseAgentContext(body.context)
 
       const upstream = await fetch(`${apiBase}/chat/completions`, {
         method: 'POST',
@@ -53,11 +144,13 @@ function qwenProxy(env) {
         body: JSON.stringify({
           model,
           messages: [
-            { role: 'system', content: '你是当前“武汉城市运行中心”网页中的 Qwen 城市助手。你必须只依据以下真实界面回答：欢迎页点击“开始探索城市”会定位黄鹤楼并进入武汉；顶部“图层”按钮会打开底图面板，面板内可选择标准城市等底图，并通过面板底部的“3D 城市”开关启用或关闭建筑；左侧“地图工具”分为“路径导航”和“智能绘图”。路径导航支持输入武汉地点并选择联想结果，也支持地图选点和拖动起终点，提供驾车、步行、骑行路线；智能绘图基于 Mapbox Draw，支持点、路径、区域、可设置半径的圆形、选择编辑、删除、撤销和重做，并显示经纬度与量算结果；地球总览右侧展示实时天气、Open-Meteo AQI 和本周车辆单双号日历，进入城市地图后这些总览面板自动隐藏。页面不包含垃圾分类、车辆号牌查询，也不包含名为“武汉3D建筑”的可选图层，不要编造这些选项。回答操作问题时引用界面上的准确按钮名，使用简洁、准确的中文。禁止声称本页面是内网，禁止编造未接入的数据、权限、设备属性、实时状态或图层叠加能力；没有数据依据时必须明确说明。' },
+            { role: 'system', content: CITY_AGENT_SYSTEM_PROMPT },
+            { role: 'system', content: `当前页面状态（只读）：${JSON.stringify(agentContext)}` },
             ...messages
           ],
           temperature: 0.35,
           max_tokens: 1200,
+          response_format: { type: 'json_object' },
           ...(env.QWEN_ENABLE_SEARCH === 'true' ? { enable_search: true } : {})
         })
       })
@@ -65,8 +158,9 @@ function qwenProxy(env) {
       if (!upstream.ok) {
         return sendJson(res, 502, { error: data?.error?.message || 'Qwen 服务暂不可用' })
       }
-      const content = data?.choices?.[0]?.message?.content
-      return sendJson(res, 200, { content: content || '暂未获得有效回答', model })
+      const rawContent = data?.choices?.[0]?.message?.content
+      const agentResponse = parseAgentResponse(rawContent)
+      return sendJson(res, 200, { ...agentResponse, model })
     } catch (error) {
       return sendJson(res, 500, { error: error?.message || '助手请求失败' })
     }

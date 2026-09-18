@@ -2,7 +2,7 @@
   "name": "mapbox-city-visualization",
   "version": "1.0.0",
   "private": true,
-  "description": "基于Mapbox的武汉市智慧城市可视化平台",
+  "description": "Qwen城市智能体驱动的武汉智慧城市数字孪生与WebGIS平台",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

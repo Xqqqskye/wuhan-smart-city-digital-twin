@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import mapboxgl from 'mapbox-gl';
 import { amapKey, gcj02ToWgs84, getAmapRoute, searchPOI, wgs84ToGcj02 } from '@/utils/amapAPI';
 
@@ -453,11 +453,11 @@ function selectRoute(index) {
 async function requestRoute() {
   if (!canNavigate.value) {
     error.value = '请输入起点和终点';
-    return;
+    return { ok: false, message: error.value };
   }
   if (!amapKey) {
     error.value = '高德 Web 服务 Key 未配置，无法计算路线';
-    return;
+    return { ok: false, message: error.value };
   }
   abortController?.abort();
   abortController = new AbortController();
@@ -483,13 +483,47 @@ async function requestRoute() {
     ensureRouteLayers();
     updateRouteData();
     fitSelectedRoute();
+    return {
+      ok: true,
+      message: `${profiles.find(item => item.id === profile.value)?.label || '路线'}规划完成`,
+      summary: `${formatDuration(routes.value[0].duration)} · ${formatDistance(routes.value[0].distance)}`
+    };
   } catch (requestError) {
     if (requestId === routeRequestId && requestError.name !== 'AbortError') {
       error.value = requestError.message || '路线请求失败';
     }
+    return { ok: false, message: error.value || '路线请求失败' };
   } finally {
     if (requestId === routeRequestId) loading.value = false;
   }
+}
+
+async function planRoute({ origin: originName, destination: destinationName, mode = 'driving' } = {}) {
+  const safeMode = profiles.some(item => item.id === mode) ? mode : 'driving';
+  if (!String(originName || '').trim() || !String(destinationName || '').trim()) {
+    throw new Error('规划路线需要同时提供起点和终点');
+  }
+  if (profile.value !== safeMode) {
+    profile.value = safeMode;
+    await nextTick();
+  }
+  clearRoute();
+  originQuery.value = String(originName).trim();
+  destinationQuery.value = String(destinationName).trim();
+  const result = await requestRoute();
+  if (!result?.ok) throw new Error(result?.message || '路线规划失败');
+  return result;
+}
+
+function getAgentContext() {
+  const route = selectedSummary.value;
+  return {
+    mode: profile.value,
+    origin: originQuery.value,
+    destination: destinationQuery.value,
+    summary: route ? `${formatDuration(route.duration)} · ${formatDistance(route.distance)}` : '',
+    routeCount: routes.value.length
+  };
 }
 
 function clearRoute() {
@@ -532,6 +566,8 @@ function attachMap(map) {
 watch(() => props.map, attachMap, { immediate: true });
 watch(profile, clearRouteResults);
 onBeforeUnmount(detachMap);
+
+defineExpose({ planRoute, clearRoute, getAgentContext });
 </script>
 
 <template>

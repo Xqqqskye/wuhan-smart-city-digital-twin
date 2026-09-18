@@ -324,6 +324,28 @@ function attachMap(nextMap) {
   syncMap();
 }
 
+async function setFacilities(kinds = []) {
+  const requested = new Set((Array.isArray(kinds) ? kinds : []).filter(kind => kind in facilityConfig));
+  Object.keys(facilityConfig).forEach(kind => { enabled[kind] = requested.has(kind); });
+  syncMap();
+  if (requested.size && props.active) scheduleViewportLoad(80);
+  return {
+    message: requested.size
+      ? `已显示${[...requested].map(kind => facilityConfig[kind].label).join('和')}`
+      : '已隐藏停车场和充电站',
+    visibleCount: visibleCount.value
+  };
+}
+
+function getAgentContext() {
+  return {
+    parking: enabled.parking,
+    charging: enabled.charging,
+    visibleCount: visibleCount.value,
+    loading: isLoading.value
+  };
+}
+
 watch(() => props.map, attachMap, { immediate: true });
 watch(() => props.active, active => {
   if (active) scheduleViewportLoad(1900);
@@ -331,6 +353,8 @@ watch(() => props.active, active => {
 }, { immediate: true });
 
 onBeforeUnmount(detachMap);
+
+defineExpose({ setFacilities, getAgentContext });
 </script>
 
 <template>

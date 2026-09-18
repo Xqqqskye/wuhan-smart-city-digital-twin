@@ -43,6 +43,31 @@ function handleViewControl(config) {
   mapViewerRef.value?.flyTo?.(config);
 }
 
+function getAgentContext() {
+  return {
+    city: currentCity.value,
+    cityMode: cityMode.value,
+    mapStyle: currentMapStyle.value,
+    mapStyleName: currentStyleName.value,
+    enable3D: enable3D.value,
+    ...(mapViewerRef.value?.getAgentContext?.() || {})
+  };
+}
+
+async function handleAgentAction(action) {
+  if (action?.type === 'set_map_style') {
+    const styleId = action.args?.styleId;
+    if (!Object.prototype.hasOwnProperty.call(styleNames, styleId)) throw new Error('不支持该底图样式');
+    handleChangeMapStyle(styleId);
+    return { message: `已切换到${styleNames[styleId]}底图` };
+  }
+  if (action?.type === 'toggle_3d') {
+    handleToggle3D(Boolean(action.args?.enabled));
+    return { message: `已${action.args?.enabled ? '开启' : '关闭'}三维建筑` };
+  }
+  return mapViewerRef.value?.executeAgentAction?.(action) || Promise.reject(new Error('地图尚未就绪'));
+}
+
 function goHome() {
   router.push('/welcome');
 }
@@ -75,7 +100,12 @@ function goHome() {
       <TrafficRestriction class="data-panel" />
     </aside>
 
-    <QwenAssistant :city="currentCity" :city-mode="cityMode" />
+    <QwenAssistant
+      :city="currentCity"
+      :city-mode="cityMode"
+      :context-provider="getAgentContext"
+      :action-executor="handleAgentAction"
+    />
 
     <div class="system-bar">
       <span><i class="online"></i> SYSTEM ONLINE</span>
