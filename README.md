@@ -6,11 +6,28 @@
 
 ## 项目截图
 
-### 城市态势总览
+### Qwen 城市智能体：环境理解与工具编排
 
-![武汉智慧城市地球态势总览](docs/images/earth-overview.png)
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/agent-city-context.png" alt="城市智能体读取天气、空气质量和限行上下文" /></td>
+    <td width="50%"><img src="docs/images/agent-web-fallback.png" alt="城市智能体联网热点检索与工具链降级" /></td>
+  </tr>
+  <tr>
+    <td align="center">天气、AQI、限行等城市上下文</td>
+    <td align="center">联网热点检索与工具链容错</td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><img src="docs/images/agent-loop-guard.png" alt="城市智能体多步任务防循环保护" /></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center">多步任务编排的防循环保护</td>
+  </tr>
+</table>
 
-### 多方式路径规划
+> “联网热点检索”截图记录了旧新闻接口失效时智能体自动转入公开网络检索的容错过程；当前版本已移除失效接口，热点问题会直接使用 Qwen 联网搜索。
+
+### 城市智能体的地图工具执行结果
 
 <table>
   <tr>
@@ -18,10 +35,14 @@
     <td width="50%"><img src="docs/images/public-transit.png" alt="公交与地铁公共交通规划" /></td>
   </tr>
   <tr>
-    <td align="center">驾车路径与逐路段导航</td>
-    <td align="center">公交、地铁公共交通规划</td>
+    <td align="center">自然语言触发驾车路径与逐路段导航</td>
+    <td align="center">自然语言触发公交、地铁公共交通规划</td>
   </tr>
 </table>
+
+### 城市态势总览
+
+![武汉智慧城市地球态势总览](docs/images/earth-overview.png)
 
 > 页面数据会随 API 配置、实时天气、空气质量和地图服务状态变化；截图用于展示主要交互形态。
 
