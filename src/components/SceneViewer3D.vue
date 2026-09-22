@@ -31,7 +31,7 @@
 
 <script setup>
 import SearchBox from './SearchBox.vue';
-import { defineAsyncComponent, onMounted, onUnmounted, ref, watch } from "vue";
+import { defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import mapboxgl from 'mapbox-gl';
 import { mapboxToken } from '../utils/token';
 import 'mapbox-gl/dist/mapbox-gl.css';
@@ -457,13 +457,16 @@ async function executeAgentAction(action) {
       const names = { overview: '武汉总览', top: '垂直俯视', skyline: '城市天际线' };
       return { message: `已切换到${names[args.preset]}视角` };
     }
-    case 'show_facilities':
+    case 'show_facilities': {
       ensureCityMode();
       toolTab.value = 'route';
+      await nextTick();
       return mobilityPoiRef.value?.setFacilities?.(args.kinds) || { message: '设施图层尚未就绪' };
+    }
     case 'navigate':
       ensureCityMode();
       toolTab.value = 'route';
+      await nextTick();
       if (/^(当前位置|地图中心|这里)$/.test(String(args.origin || '').trim())) {
         const center = map.value?.getCenter?.();
         args.origin = center ? [center.lng, center.lat] : args.origin;

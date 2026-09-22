@@ -46,7 +46,7 @@ const messages = ref(restoredMessages.length ? restoredMessages : [welcomeMessag
 if (restoredMessages.length !== memory.value.messages.length) {
   memory.value = saveAgentMemory({ ...memory.value, messages: restoredMessages });
 }
-const suggestions = ['武汉现在有什么热点', '今天天气怎么样', '从黄鹤楼公交到武汉大学', '今天限行吗'];
+const suggestions = ['从黄鹤楼去武汉大学附近充电桩', '武汉现在有什么热点', '从黄鹤楼公交到武汉大学', '今天限行吗'];
 const profileOpen = ref(false);
 const newPlaceName = ref('');
 const newPlaceAddress = ref('');
@@ -203,7 +203,14 @@ async function send(preset = '') {
         .filter((source, index, array) => array.findIndex(item => item.url === source.url) === index)
         .slice(0, 10);
       if (round === 2) {
-        messages.value.push({ role: 'assistant', content: '已完成当前可执行步骤。为避免无限调用，这一轮先停在这里，你可以让我继续。', sources: gatheredSources });
+        const allSucceeded = toolResults.every(result => result.ok);
+        messages.value.push({
+          role: 'assistant',
+          content: allSucceeded
+            ? '本轮地图操作与数据查询已经完成。为控制工具调用次数已自动收束；如需继续筛选地点或调整路线，可以直接告诉我。'
+            : '部分步骤暂未完成，本轮已在安全调用上限处暂停。你可以让我重试失败步骤或换一种方案。',
+          sources: gatheredSources
+        });
         break;
       }
       data = await postQwen({
