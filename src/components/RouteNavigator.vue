@@ -28,6 +28,8 @@ const originQuery = ref('');
 const destinationQuery = ref('');
 const originSuggestions = ref([]);
 const destinationSuggestions = ref([]);
+const waypointNames = ref([]);
+const waypointAmap = ref([]);
 const activeSearch = ref('');
 const searching = ref(false);
 
@@ -473,7 +475,7 @@ async function requestRoute() {
       resolveWaypoint('origin'),
       resolveWaypoint('destination')
     ]);
-    const route = await getAmapRoute(profile.value, originAmap.value, destinationAmap.value);
+    const route = await getAmapRoute(profile.value, originAmap.value, destinationAmap.value, { waypoints: waypointAmap.value });
     if (requestId !== routeRequestId) return;
     routes.value = profile.value === 'transit'
       ? parseTransitRoutes(route)
@@ -486,7 +488,16 @@ async function requestRoute() {
     return {
       ok: true,
       message: `${profiles.find(item => item.id === profile.value)?.label || '路线'}规划完成`,
-      summary: `${formatDuration(routes.value[0].duration)} · ${formatDistance(routes.value[0].distance)}`
+      summary: `${formatDuration(routes.value[0].duration)} · ${formatDistance(routes.value[0].distance)}`,
+      data: {
+        mode: profile.value,
+        origin: originQuery.value,
+        destination: destinationQuery.value,
+        waypoints: waypointNames.value,
+        duration: routes.value[0].duration,
+        distance: routes.value[0].distance,
+        alternatives: routes.value.length
+      }
     };
   } catch (requestError) {
     if (requestId === routeRequestId && requestError.name !== 'AbortError') {
@@ -498,9 +509,10 @@ async function requestRoute() {
   }
 }
 
-async function planRoute({ origin: originName, destination: destinationName, mode = 'driving' } = {}) {
+async function planRoute({ origin: originName, destination: destinationName, waypoints = [], mode = 'driving' } = {}) {
   const safeMode = profiles.some(item => item.id === mode) ? mode : 'driving';
-  if (!String(originName || '').trim() || !String(destinationName || '').trim()) {
+  const validPoint = value => Array.isArray(value) ? value.length >= 2 && value.every(Number.isFinite) : Boolean(String(value || '').trim());
+  if (!validPoint(originName) || !validPoint(destinationName)) {
     throw new Error('规划路线需要同时提供起点和终点');
   }
   if (profile.value !== safeMode) {
@@ -508,8 +520,33 @@ async function planRoute({ origin: originName, destination: destinationName, mod
     await nextTick();
   }
   clearRoute();
-  originQuery.value = String(originName).trim();
-  destinationQuery.value = String(destinationName).trim();
+  if (Array.isArray(originName)) {
+    origin.value = originName.slice(0, 2);
+    originAmap.value = wgs84ToGcj02(...origin.value);
+    originQuery.value = '当前地图中心';
+    setMarker('origin', origin.value);
+  } else {
+    originQuery.value = String(originName).trim();
+  }
+  if (Array.isArray(destinationName)) {
+    destination.value = destinationName.slice(0, 2);
+    destinationAmap.value = wgs84ToGcj02(...destination.value);
+    destinationQuery.value = '目标位置';
+    setMarker('destination', destination.value);
+  } else {
+    destinationQuery.value = String(destinationName).trim();
+  }
+  waypointNames.value = safeMode === 'driving' && Array.isArray(waypoints)
+    ? waypoints.slice(0, 3).map(value => String(value || '').trim()).filter(Boolean)
+    : [];
+  if (waypointNames.value.length) {
+    const places = await Promise.all(waypointNames.value.map(async name => {
+      const results = await searchPOI(name, '武汉市');
+      if (!results[0]?.gcjLocation) throw new Error(`未找到途经点“${name}”`);
+      return results[0].gcjLocation;
+    }));
+    waypointAmap.value = places;
+  }
   const result = await requestRoute();
   if (!result?.ok) throw new Error(result?.message || '路线规划失败');
   return result;
@@ -521,6 +558,7 @@ function getAgentContext() {
     mode: profile.value,
     origin: originQuery.value,
     destination: destinationQuery.value,
+    waypoints: waypointNames.value,
     summary: route ? `${formatDuration(route.duration)} · ${formatDistance(route.distance)}` : '',
     routeCount: routes.value.length
   };
@@ -537,6 +575,8 @@ function clearRoute() {
   destinationQuery.value = '';
   originSuggestions.value = [];
   destinationSuggestions.value = [];
+  waypointNames.value = [];
+  waypointAmap.value = [];
   error.value = '';
   originMarker?.remove();
   destinationMarker?.remove();
@@ -599,6 +639,7 @@ defineExpose({ planRoute, clearRoute, getAgentContext });
     </div>
 
     <p class="route-hint">{{ selecting ? `请在地图上点击设置${selecting === 'origin' ? '起点' : '终点'}` : (searching ? '正在搜索地点…' : '输入地点或地图选点，标记可拖动调整') }}</p>
+    <p v-if="waypointNames.length" class="waypoint-hint">途经：{{ waypointNames.join(' → ') }}</p>
 
     <div class="route-actions">
       <button class="primary" :disabled="!canNavigate || loading" :title="canNavigate ? '自动匹配地点并计算路线' : '请输入起点和终点'" @click="requestRoute">{{ loading ? '路线规划中…' : '开始导航' }}</button>
@@ -635,5 +676,6 @@ defineExpose({ planRoute, clearRoute, getAgentContext });
 <style scoped>
 .route-planner{padding-top:10px}.profile-switch{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}.profile-switch button,.route-actions button,.route-options button{margin:0;border:1px solid rgba(88,222,248,.13);border-radius:6px;color:rgba(223,244,249,.68);background:rgba(78,204,231,.045);cursor:pointer}.profile-switch button{height:32px;padding:0;font-size:10px}.profile-switch button span{margin-right:4px;color:#63e5ff}.profile-switch button.active{color:#fff;border-color:rgba(83,224,249,.5);background:rgba(20,181,213,.18)}.waypoints{position:relative;margin-top:8px;padding-right:32px}.place-field{position:relative;height:50px;margin-bottom:6px;padding:6px 34px 6px 10px;display:flex;align-items:center;gap:10px;border:1px solid rgba(88,222,248,.13);border-radius:7px;background:rgba(78,204,231,.04)}.place-field.focused{border-color:#50dff7;background:rgba(42,199,227,.1)}.place-field>div{min-width:0;flex:1}.place-field small{display:block;margin-bottom:3px;color:rgba(201,232,239,.42);font-size:8px}.place-field input{width:100%;padding:0;border:0;outline:0;color:#e2faff;background:transparent;font:10px/1.3 sans-serif}.place-field input::placeholder{color:rgba(207,234,240,.32)}.place-field>button{position:absolute;right:5px;top:10px;width:28px;height:28px;margin:0!important;padding:0!important;border:0!important;color:#6ee5fa!important;background:transparent!important;font-size:14px!important}.point{width:9px;height:9px;flex:0 0 auto;border:2px solid #061b25;border-radius:50%;box-shadow:0 0 0 2px currentColor}.point-origin{color:#55e2b0;background:#55e2b0}.point-destination{color:#ff846f;background:#ff846f}.swap{position:absolute;right:0;top:36px;width:26px;height:28px;margin:0!important;padding:0!important;border-radius:50%!important;color:#70e6fb!important;font-size:15px!important}.place-suggestions{position:absolute;z-index:10;left:0;right:0;top:52px;margin:0;padding:4px;overflow:auto;max-height:190px;border:1px solid rgba(82,221,247,.2);border-radius:7px;background:rgba(4,20,32,.98);box-shadow:0 16px 34px rgba(0,0,0,.38);list-style:none}.place-suggestions li button{width:100%;margin:0!important;padding:7px 8px!important;display:block;border:0!important;text-align:left;background:transparent!important}.place-suggestions li+li{border-top:1px solid rgba(255,255,255,.05)}.place-suggestions strong,.place-suggestions span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.place-suggestions strong{color:#e6fbff;font-size:9px}.place-suggestions span{margin-top:3px;color:rgba(206,235,241,.4);font-size:7px}.route-hint{min-height:22px;margin:2px 0 7px;padding:6px 7px;border-left:2px solid rgba(83,221,248,.55);color:rgba(215,240,246,.52);background:rgba(79,204,231,.05);font-size:8px;line-height:1.35}.route-actions{display:grid;grid-template-columns:1fr 64px;gap:6px}.route-actions button{height:32px;padding:0;font-size:9px}.route-actions .primary{color:#04202b;border-color:#65e8ff;background:linear-gradient(135deg,#62e6fa,#45cce8);box-shadow:0 5px 14px rgba(34,194,222,.22);font-weight:700}.route-actions .primary:not(:disabled):hover{background:linear-gradient(135deg,#8af0ff,#58dbf2);transform:translateY(-1px)}.route-actions button:disabled{opacity:.38;cursor:not-allowed;box-shadow:none}.route-error{margin:7px 0 0;color:#ff9d91;font-size:8px;line-height:1.4}.route-options{display:grid;gap:5px;margin-top:8px}.route-options button{padding:7px 8px;display:flex;justify-content:space-between;text-align:left}.route-options button.active{border-color:rgba(87,231,255,.5);background:rgba(38,192,221,.14)}.route-options strong{color:#5ce5ff;font-size:9px}.route-options span{color:rgba(223,244,249,.56);font-size:8px}.turn-list{margin-top:8px;padding:8px;border:1px solid rgba(87,228,178,.15);border-radius:6px;background:rgba(53,201,157,.05)}.turn-title{display:flex;justify-content:space-between;color:#61dfb4;font-size:8px}.turn-list ol{margin:7px 0 0;padding:0;list-style:none}.turn-list li{display:flex;gap:7px;padding:5px 0;border-top:1px solid rgba(255,255,255,.055)}.turn-list li>span{width:15px;height:15px;flex:0 0 auto;border-radius:50%;color:#06212b;background:#5fd9ee;text-align:center;font:8px/15px monospace}.turn-list p{margin:0;color:rgba(222,243,248,.62);font-size:8px;line-height:1.45}
 .profile-switch{grid-template-columns:repeat(4,1fr)}.profile-switch button{font-size:9px}.route-meta{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}.route-meta span{padding:4px 5px;border-radius:4px;color:rgba(215,241,247,.62);background:rgba(83,207,232,.08);font-size:7px}.route-meta .warning{color:#ffb29f;background:rgba(255,116,88,.1)}.turn-list ol{max-height:250px;overflow-y:auto;scrollbar-width:thin}.turn-list li>div{min-width:0;flex:1}.turn-list li>span{width:20px;height:20px;font:700 8px/20px sans-serif}.turn-list p{font-size:9px}.turn-list small{display:block;margin-top:3px;color:rgba(203,232,239,.38);font-size:7px;line-height:1.4}
+.waypoint-hint{margin:-3px 0 7px;padding:5px 7px;border-radius:5px;color:#ffd58a;background:rgba(244,182,77,.09);font-size:8px;line-height:1.4}
 :global(.route-marker){width:28px;height:32px;border:2px solid #fff;border-radius:14px 14px 14px 2px;color:#06202a;text-align:center;font:700 10px/26px sans-serif;box-shadow:0 5px 15px rgba(0,0,0,.28);transform:rotate(-45deg)}:global(.route-marker span){display:block;transform:rotate(45deg)}:global(.route-marker-origin){background:#57e0ae}:global(.route-marker-destination){background:#ff806c}
 </style>

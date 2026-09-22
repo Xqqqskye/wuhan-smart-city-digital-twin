@@ -26,28 +26,28 @@ onBeforeUnmount(() => window.clearTimeout(timer));
         <span class="brand-mark"><i></i><i></i><i></i></span>
         <span>WH · CITY OS</span>
       </div>
-      <div class="system-state"><span></span> 城市数据在线</div>
+      <div class="system-state agent-state"><i class="agent-dot"></i> 城市智能体 · 在线巡检中<span></span> 城市数据在线</div>
     </nav>
 
     <section class="hero">
       <div class="copy">
         <div class="eyebrow">WUHAN DIGITAL TWIN · 2026</div>
-        <h1>看见城市脉搏<br><em>预见武汉未来</em></h1>
-        <p class="lead">融合空间信息、城市治理与实时感知数据，为城市运行提供统一、直观、可交互的数字视图。</p>
+        <h1>唤醒城市智能体<br><em>对话整座武汉</em></h1>
+        <p class="lead">Qwen 城市智能体 7×24 小时主动巡检真实空气数据，发现异常第一时间提醒你；接入 MCP 后可扩展实时路况、公交到站与车位。</p>
 
         <div class="actions">
           <button class="primary-action" :disabled="loading" @click="enterPlatform">
-            <span v-if="!loading">进入城市运行中心</span>
-            <span v-else class="loading-label"><i></i> 正在加载城市数据</span>
+            <span v-if="!loading">唤醒城市智能体</span>
+            <span v-else class="loading-label"><i></i> 正在唤醒智能体</span>
             <b aria-hidden="true">↗</b>
           </button>
-          <div class="version">CITY OS / 2.0</div>
+          <div class="version">AI AGENT / 主动式 · 3min 巡检</div>
         </div>
 
         <div class="capabilities">
-          <div><strong>01</strong><span>三维城市<br>空间洞察</span></div>
-          <div><strong>02</strong><span>交通态势<br>实时感知</span></div>
-          <div><strong>03</strong><span>城市服务<br>智能查询</span></div>
+          <div><strong>01</strong><span>主动巡检<br>异常即时推送</span></div>
+          <div><strong>02</strong><span>一句话调度<br>地图与导航</span></div>
+          <div><strong>03</strong><span>真实数据问答<br>天气·限行·路况</span></div>
         </div>
       </div>
 
@@ -93,6 +93,10 @@ onBeforeUnmount(() => window.clearTimeout(timer));
 .brand-mark i:nth-child(1) { height: 11px; }.brand-mark i:nth-child(2) { height: 20px; }.brand-mark i:nth-child(3) { height: 15px; }
 .system-state { color: rgba(229,247,255,.66); letter-spacing: .08em; }
 .system-state span { display: inline-block; width: 7px; height: 7px; margin-right: 8px; border-radius: 50%; background: #66f2b4; box-shadow: 0 0 12px #66f2b4; }
+.agent-state { padding: 7px 14px; display: flex; align-items: center; gap: 9px; border: 1px solid rgba(82,217,245,.3); border-radius: 16px; color: #9feaf9; background: rgba(20,60,84,.4); backdrop-filter: blur(8px); }
+.agent-state .agent-dot { width: 7px; height: 7px; border-radius: 50%; background: #52d9f5; box-shadow: 0 0 10px #52d9f5; animation: agent-blink 2s infinite; }
+.agent-state span { width: 1px; height: 12px; margin: 0 2px; background: rgba(255,255,255,.22); box-shadow: none; }
+@keyframes agent-blink { 50% { opacity: .35; } }
 .hero { position: relative; z-index: 2; width: min(1380px,90%); min-height: calc(100vh - 150px); margin: 0 auto; display: grid; grid-template-columns: .9fr 1.1fr; align-items: center; }
 .copy { padding: 40px 0 80px; }
 .eyebrow { margin-bottom: 22px; color: var(--cyan); font-size: 12px; font-weight: 700; letter-spacing: .24em; }

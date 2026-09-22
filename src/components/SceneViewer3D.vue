@@ -419,7 +419,21 @@ async function focusPlace(query) {
   if (!place?.location) throw new Error(`未找到“${keyword}”，请尝试更具体的地点名称`);
   ensureCityMode();
   handleSearch(place);
-  return { message: `已定位到${place.title}`, place: place.title };
+  return { message: `已定位到${place.title}`, data: { place: place.title, address: place.address, location: place.location } };
+}
+
+async function searchPlacesForAgent(query, near = '') {
+  const keyword = [String(query || '').trim(), String(near || '').trim()].filter(Boolean).join(' ');
+  if (!keyword) throw new Error('请提供地点搜索关键词');
+  const results = await searchPOI(keyword, '武汉市');
+  if (!results.length) throw new Error(`未找到“${keyword}”相关地点`);
+  return {
+    message: `已找到 ${results.length} 个相关地点`,
+    data: {
+      query: keyword,
+      results: results.slice(0, 5).map(place => ({ title: place.title, address: place.address, location: place.location }))
+    }
+  };
 }
 
 async function executeAgentAction(action) {
@@ -433,6 +447,8 @@ async function executeAgentAction(action) {
       return { message: '已返回地球视图' };
     case 'fly_to':
       return focusPlace(args.query);
+    case 'search_place':
+      return searchPlacesForAgent(args.query, args.near);
     case 'set_view': {
       const preset = agentViewPresets[args.preset];
       if (!preset) throw new Error('不支持该视角预设');
@@ -448,6 +464,10 @@ async function executeAgentAction(action) {
     case 'navigate':
       ensureCityMode();
       toolTab.value = 'route';
+      if (/^(当前位置|地图中心|这里)$/.test(String(args.origin || '').trim())) {
+        const center = map.value?.getCenter?.();
+        args.origin = center ? [center.lng, center.lat] : args.origin;
+      }
       return routeNavigatorRef.value?.planRoute?.(args) || Promise.reject(new Error('导航工具尚未就绪'));
     case 'open_tool':
       if (args.tool === 'draw') openDrawingTools();

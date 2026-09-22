@@ -8,6 +8,7 @@ import SceneViewer3D from '@/components/SceneViewer3D.vue';
 import TopButtons from '@/components/TopButtons.vue';
 import TrafficRestriction from '@/components/TrafficRestriction.vue';
 import ViewControl from '@/components/ViewControl.vue';
+import { executeCityQuery } from '@/utils/cityDataService';
 
 const router = useRouter();
 const mapViewerRef = ref(null);
@@ -68,6 +69,10 @@ async function handleAgentAction(action) {
   return mapViewerRef.value?.executeAgentAction?.(action) || Promise.reject(new Error('地图尚未就绪'));
 }
 
+function handleAgentQuery(action) {
+  return executeCityQuery(action, currentCity.value);
+}
+
 function goHome() {
   router.push('/welcome');
 }
@@ -100,12 +105,17 @@ function goHome() {
       <TrafficRestriction class="data-panel" />
     </aside>
 
-    <QwenAssistant
-      :city="currentCity"
-      :city-mode="cityMode"
-      :context-provider="getAgentContext"
-      :action-executor="handleAgentAction"
-    />
+    <!-- 城市智能体面板：进入城市视图后，作为右侧数据面板的一部分展示 -->
+    <aside v-show="cityMode" class="right-panels">
+      <QwenAssistant
+        :city="currentCity"
+        :city-mode="cityMode"
+        :context-provider="getAgentContext"
+        :action-executor="handleAgentAction"
+        :query-executor="handleAgentQuery"
+        class="data-panel"
+      />
+    </aside>
 
     <div class="system-bar">
       <span><i class="online"></i> SYSTEM ONLINE</span>

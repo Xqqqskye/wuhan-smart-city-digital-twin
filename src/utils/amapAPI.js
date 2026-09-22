@@ -52,7 +52,7 @@ export function wgs84ToGcj02(lng, lat) {
   return [lng + dLng, lat + dLat];
 }
 
-export async function getAmapRoute(mode, origin, destination) {
+export async function getAmapRoute(mode, origin, destination, options = {}) {
   if (!amapKey) throw new Error('高德 Web 服务 Key 未配置');
   const endpoints = {
     driving: 'driving',
@@ -70,6 +70,9 @@ export async function getAmapRoute(mode, origin, destination) {
     show_fields: mode === 'transit' ? 'cost,polyline' : 'cost,navi,polyline'
   });
   if (mode === 'driving') parameters.set('strategy', '32');
+  if (mode === 'driving' && Array.isArray(options.waypoints) && options.waypoints.length) {
+    parameters.set('waypoints', options.waypoints.slice(0, 3).map(point => point.join(',')).join(';'));
+  }
   if (mode === 'walking' || mode === 'bicycling') parameters.set('alternative_route', '3');
   if (mode === 'transit') {
     parameters.set('city1', '027');
